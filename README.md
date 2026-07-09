@@ -22,7 +22,6 @@ The TikTok Live Recorder is a tool designed to easily capture and save live stre
 - [Installation](#installation)
 - [Usage](#command-line-usage)
 - [Guide](#guide)
-- [TikRec Cloud vs Self-Hosted](#tikrec-cloud-vs-self-hosted)
 
 ## Installation
 
