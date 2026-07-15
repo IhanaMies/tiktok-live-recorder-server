@@ -79,7 +79,7 @@ def download_file(url: str, file_name: str) -> None:
         url (str): URL to download the file from.
         file_name (str): Name of the file to save.
     """
-    response = requests.get(url, stream=True)
+    response = requests.get(url, stream=True, timeout=30)
 
     if response.status_code == 200:
         with open(file_name, "wb") as file:
