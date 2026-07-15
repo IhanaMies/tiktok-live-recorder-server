@@ -119,14 +119,15 @@ class Info(Enum):
         return iter(self.value)
 
     NEW_FEATURES = [
+        "Rejected ended TikTok rooms that still expose stale stream URLs.",
+        "Tried alternate stream URLs and skipped empty CDN responses.",
+        "Resolved room IDs before country checks for manual username recordings.",
         "Validated live rooms with stream info to avoid fake recordings.",
         "Added restricted LIVE fallback for TikTok 4003110 responses.",
         "Added -ffmpeg-path for custom FFmpeg binaries.",
-        "Preserved existing cookies during recorder updates.",
-        "Added pytest coverage for CLI args and live-room checks.",
     ]
 
-    VERSION = "7.7.0"
+    VERSION = "7.7.1"
     BANNER = rf"""
 
   _____ _ _   _____    _     _    _           ___                   _         
