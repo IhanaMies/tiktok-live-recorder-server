@@ -29,6 +29,9 @@ class TikTokRecorder:
         self.use_telegram = config.use_telegram
         self._proxy = config.proxy
         self._cookies = config.cookies
+        self._status_dict = config.status_dict
+        self._status_key = config.username or config.user
+        self._interval_value = config.interval_value
 
     def _setup(self):
         """Resolve user/room data and validate prerequisites via network calls."""
@@ -99,21 +102,74 @@ class TikTokRecorder:
         self.start_recording(self.user, self.room_id)
 
     def automatic_mode(self):
+        self._publish_status("waiting")
         while True:
+            if self._is_removed():
+                self._publish_status("stopped")
+                return
             try:
                 self.room_id = self.tiktok.get_room_id_from_user(self.user)
+                self._publish_status("live")
                 self.manual_mode()
+                self._publish_status("waiting")
 
-            except (UserLiveError, LiveNotFound) as ex:
-                logger.info(ex)
-                logger.info(
-                    f"Waiting {self.automatic_interval} minutes before recheck\n"
-                )
-                time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
+            except (UserLiveError, LiveNotFound):
+                self._publish_status("waiting")
+                self._interruptible_sleep(self._current_interval() * TimeOut.ONE_MINUTE)
 
             except (ConnectionError, RequestException, HTTPException):
                 logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
-                time.sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+                self._publish_status("error", str(Error.CONNECTION_CLOSED_AUTOMATIC))
+                self._interruptible_sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+
+            except Exception as ex:
+                logger.error(
+                    f"Unexpected error in automatic loop: {ex}", exc_info=True
+                )
+                self._publish_status("error", str(ex))
+                self._interruptible_sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+
+    def _publish_status(self, status, message=""):
+        if self._status_dict is None or self._status_key is None:
+            return
+        previous = self._status_dict.get(self._status_key, {})
+        # Preserve the last message when transitioning to "stopped" so the
+        # caller can see why the recorder exited (e.g. the last error).
+        if status == "stopped" and not message:
+            message = previous.get("message", "")
+        self._status_dict[self._status_key] = {
+            "status": status,
+            "since": time.time(),
+            "message": message,
+            "removed": previous.get("removed", False),
+        }
+
+    def _is_removed(self):
+        if self._status_dict is None or self._status_key is None:
+            return False
+        entry = self._status_dict.get(self._status_key)
+        if not entry:
+            return False
+        return bool(entry.get("removed", False))
+
+    def _interruptible_sleep(self, total_seconds):
+        remaining = int(total_seconds)
+        while remaining > 0:
+            if self._is_removed():
+                return
+            time.sleep(min(1, remaining))
+            remaining -= 1
+
+    def _current_interval(self) -> int:
+        """Return the active recheck interval (minutes).
+
+        If a shared interval holder was provided, read it fresh on every
+        call so runtime changes take effect on the next cycle without
+        resetting timers that are already mid-sleep.
+        """
+        if self._interval_value is not None:
+            return int(self._interval_value.value)
+        return self.automatic_interval
 
     def followers_mode(self):
         active_recordings = {}  # follower -> Thread

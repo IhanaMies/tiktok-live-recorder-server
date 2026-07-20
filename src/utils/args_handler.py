@@ -39,12 +39,14 @@ def parse_args():
         "-mode",
         dest="mode",
         help=(
-            "Recording mode: (manual, automatic, followers) [Default: manual]\n"
+            "Recording mode: (manual, automatic, followers)\n"
             "[manual] => Manual live recording.\n"
             "[automatic] => Automatic live recording when the user is live.\n"
-            "[followers] => Automatic live recording of followed users."
+            "[followers] => Automatic live recording of followed users.\n"
+            "Defaults to 'manual' when a username/room_id/url is given;\n"
+            "defaults to 'automatic' when the program is started with no arguments."
         ),
-        default="manual",
+        default=None,
         action="store",
     )
 
@@ -124,20 +126,21 @@ def parse_args():
 def validate_and_parse_args():
     args = parse_args()
 
-    if not args.mode:
-        raise ArgsParseError(
-            "Missing mode value. Please specify the mode (manual, automatic or followers)."
-        )
-    if args.mode not in ["manual", "automatic", "followers"]:
+    if args.mode is not None and args.mode not in ["manual", "automatic", "followers"]:
         raise ArgsParseError(
             "Incorrect mode value. Choose between 'manual', 'automatic' or 'followers'."
         )
 
-    if args.mode in ["manual", "automatic"]:
-        if not args.user and not args.room_id and not args.url:
-            raise ArgsParseError(
-                "Missing URL, username, or room ID. Please provide one of these parameters."
-            )
+    has_target = bool(args.user or args.room_id or args.url)
+    explicit_mode = args.mode is not None
+
+    if args.mode is None:
+        args.mode = "automatic" if not has_target else "manual"
+
+    if args.mode in ["manual", "automatic"] and not has_target and explicit_mode:
+        raise ArgsParseError(
+            "Missing URL, username, or room ID. Please provide one of these parameters."
+        )
 
     if args.user:
         args.user = [u.lstrip("@").strip() for u in args.user.split(",") if u.strip()]

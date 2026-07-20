@@ -204,3 +204,20 @@ def test_automatic_interval_less_than_one(monkeypatch):
         match="Incorrect automatic_interval value. Must be one minute or more.",
     ):
         validate_and_parse_args()
+
+
+def test_no_args_defaults_to_automatic(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["tiktok-live-recorder"])
+    args, mode = validate_and_parse_args()
+    assert args.user is None
+    assert args.mode == "automatic"
+    assert mode == Mode.AUTOMATIC
+
+
+def test_no_args_with_explicit_mode_manual_still_errors(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["tiktok-live-recorder", "-mode", "manual"])
+    with pytest.raises(
+        ArgsParseError,
+        match="Missing URL, username, or room ID. Please provide one of these parameters.",
+    ):
+        validate_and_parse_args()

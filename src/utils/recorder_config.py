@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from multiprocessing.sharedctypes import Synchronized
+from typing import Optional
 
 from utils.enums import Mode
 
@@ -17,3 +19,6 @@ class RecorderConfig:
     use_telegram: bool = False
     bitrate: str | None = None
     ffmpeg_path: str | None = None
+    status_dict: dict | None = None
+    username: str | None = None
+    interval_value: Optional[Synchronized] = None

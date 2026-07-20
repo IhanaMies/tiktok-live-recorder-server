@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 
 from utils.enums import Info
 
@@ -11,14 +12,37 @@ def banner() -> None:
     print(Info.BANNER, flush=True)
 
 
+def _cookies_path():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(script_dir, "..", "cookies.json")
+
+
 def read_cookies():
     """
     Loads the config file and returns it.
     """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(script_dir, "..", "cookies.json")
-    with open(config_path, "r") as f:
+    with open(_cookies_path(), "r") as f:
         return json.load(f)
+
+
+def write_cookies(data: dict) -> None:
+    """
+    Atomically replace cookies.json with `data`.
+    """
+    path = _cookies_path()
+    directory = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(prefix=".cookies.", suffix=".json.tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def read_telegram_config():

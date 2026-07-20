@@ -136,6 +136,68 @@ uv run python src/main.py [options]
 - [How to get room_id](https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-get-room_id)
 - [How to enable upload to Telegram](https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-enable-upload-to-telegram)
 
+## Runtime control (multi-user automatic mode)
+
+When started with `-mode automatic` and a comma-separated list of users
+(`-user alice,bob,carol`), the recorder exposes a local HTTP control API on
+`http://127.0.0.1:8723` so the monitored user set can be changed without
+restarting the program.
+
+### Endpoints
+
+| Method | Path | Body | Description |
+|--------|------|------|-------------|
+| `GET`  | `/list`    | — | Returns the current users and their recording status. |
+| `POST` | `/add`     | `{"user": "<username>"}` | Start recording a new user. |
+| `POST` | `/remove`  | `{"user": "<username>"}` | Stop recording a user. |
+| `GET`  | `/cookies` | — | Returns the current contents of `cookies.json`. |
+| `POST` | `/cookies` | `{"sessionid_ss": "<value>"}` | Updates `sessionid_ss` in `cookies.json` (other keys are preserved). |
+
+`GET /list` response shape:
+
+```json
+{
+  "users": [
+    {"user": "alice", "status": "waiting", "since": 1734567890.1, "message": ""},
+    {"user": "bob",   "status": "live",    "since": 1734567891.4, "message": ""}
+  ]
+}
+```
+
+Status values: `waiting` (polling between checks), `live` (recording now),
+`error` (last cycle raised), `stopped` (process exited).
+
+The user list is persisted in `settings.json` in the working directory
+and reloaded on the next startup, merged with the `-user` CLI argument.
+
+### Examples
+
+```bash
+# Poll status from another terminal
+curl -s http://127.0.0.1:8723/list | jq
+
+# Add a user at runtime
+curl -s -X POST -H 'Content-Type: application/json' \
+     -d '{"user":"dave"}' http://127.0.0.1:8723/add
+
+# Remove a user (let the current recording finish, then stop)
+curl -s -X POST -H 'Content-Type: application/json' \
+     -d '{"user":"dave"}' http://127.0.0.1:8723/remove
+
+# Update sessionid_ss in cookies.json (other cookies are preserved)
+curl -s -X POST -H 'Content-Type: application/json' \
+     -d '{"sessionid_ss":"<new-session-id>"}' http://127.0.0.1:8723/cookies
+```
+
+### `list` subcommand
+
+A convenience subcommand is also available to print a formatted table without
+needing `curl`/`jq`:
+
+```bash
+uv run python src/main.py list
+```
+
 ## Contributing
 
 Contributions are welcome! Feel free to open an [issue](https://github.com/Michele0303/tiktok-live-recorder/issues) or submit a [pull request](https://github.com/Michele0303/tiktok-live-recorder/pulls).
