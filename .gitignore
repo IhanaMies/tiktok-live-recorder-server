@@ -140,3 +140,7 @@ dmypy.json
 
 .idea/
 .vscode/
+
+# local settings (persisted user list, etc.)
+settings.json
+src/cookies.json
