@@ -185,6 +185,22 @@ def test_invalid_url(monkeypatch):
         validate_and_parse_args()
 
 
+def test_automatic_interval_defaults_to_60_seconds(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tiktok-live-recorder",
+            "-mode",
+            "automatic",
+            "-user",
+            "test",
+        ],
+    )
+    args, _ = validate_and_parse_args()
+    assert args.automatic_interval == 60
+
+
 def test_automatic_interval_less_than_one(monkeypatch):
     monkeypatch.setattr(
         sys,
@@ -201,7 +217,7 @@ def test_automatic_interval_less_than_one(monkeypatch):
     )
     with pytest.raises(
         ArgsParseError,
-        match="Incorrect automatic_interval value. Must be one minute or more.",
+        match="Incorrect automatic_interval value. Must be one second or more.",
     ):
         validate_and_parse_args()
 

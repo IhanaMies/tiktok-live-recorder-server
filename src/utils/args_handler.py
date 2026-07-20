@@ -53,9 +53,9 @@ def parse_args():
     parser.add_argument(
         "-automatic_interval",
         dest="automatic_interval",
-        help="Sets the interval in minutes to check if the user is live in automatic mode. [Default: 5]",
+        help="Sets the interval in seconds to check if the user is live in automatic mode. [Default: 60]",
         type=int,
-        default=5,
+        default=60,
         action="store",
     )
 
@@ -175,7 +175,7 @@ def validate_and_parse_args():
 
     if args.automatic_interval < 1:
         raise ArgsParseError(
-            "Incorrect automatic_interval value. Must be one minute or more."
+            "Incorrect automatic_interval value. Must be one second or more."
         )
 
     if args.mode == "manual":

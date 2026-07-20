@@ -81,7 +81,7 @@ def test_persistence_round_trip(tmp_path):
 
     assert path.exists()
     data = json.loads(path.read_text())
-    assert data == {"users": ["alice", "bob"]}
+    assert data == {"users": ["alice", "bob"], "automatic_interval": 60}
 
     # New store loads persisted users on seed.
     registry2 = []
@@ -97,6 +97,42 @@ def test_persistence_round_trip(tmp_path):
         assert sorted(store2.users()) == ["alice", "bob"]
     finally:
         manager2.shutdown()
+
+
+def test_persisted_automatic_interval_is_loaded(tmp_path):
+    registry = []
+    path = tmp_path / "users.json"
+    path.write_text(json.dumps({"users": ["alice"], "automatic_interval": 30}))
+    interval = [60]
+    manager = multiprocessing.Manager()
+    store = UserStore(
+        path=path,
+        manager=manager,
+        spawn_fn=make_spawn_fn(registry),
+        status_dict=manager.dict(),
+        automatic_interval=60,
+        interval_setter=lambda value: interval.__setitem__(0, value),
+    )
+    try:
+        store.seed([])
+        assert store.automatic_interval == 30
+        assert interval[0] == 30
+    finally:
+        manager.shutdown()
+
+
+def test_set_automatic_interval_persists_settings(tmp_path):
+    registry = []
+    store, manager = make_store(tmp_path, registry)
+    try:
+        store.seed(["alice"])
+        store.set_automatic_interval(90)
+        assert json.loads(store.persistence_path.read_text()) == {
+            "users": ["alice"],
+            "automatic_interval": 90,
+        }
+    finally:
+        manager.shutdown()
 
 
 def test_add_duplicate_returns_conflict(tmp_path):

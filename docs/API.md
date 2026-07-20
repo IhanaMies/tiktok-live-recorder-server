@@ -229,16 +229,17 @@ existing recorders, `POST /remove` and `POST /add` the same user.
 
 ### `GET /interval`
 
-Return the current automatic-mode recheck interval, in minutes. This is
+Return the current automatic-mode recheck interval, in seconds. This is
 the same value passed at startup via `-automatic_interval`, but mutable
-at runtime via [`POST /interval`](#post-interval).
+at runtime via [`POST /interval`](#post-interval). The value is loaded from
+`settings.json` at startup.
 
 **Request:** no body.
 
 **Response — `200 OK`:**
 
 ```json
-{ "interval": 5 }
+{ "interval": 60 }
 ```
 
 **Responses:**
@@ -258,14 +259,15 @@ Change the automatic-mode recheck interval at runtime.
 **Request body:**
 
 ```json
-{ "interval": 10 }
+{ "interval": 120 }
 ```
 
-The value must be an integer ≥ 1 (minutes). Booleans, floats, and strings
+The value must be an integer ≥ 1 (seconds). Booleans, floats, and strings
 are rejected.
 
 **Behavior:**
 
+- The new interval is saved to `settings.json` and restored at the next startup.
 - The current in-flight sleep in each recorder finishes with the **old**
   interval.
 - The **next** sleep in each recorder uses the **new** interval.
@@ -279,9 +281,9 @@ are rejected.
 
 | Status | Body | Meaning |
 |--------|------|---------|
-| `200 OK` | `{"ok": true, "interval": 10}` | Interval updated. |
+| `200 OK` | `{"ok": true, "interval": 120}` | Interval updated and persisted. |
 | `400 Bad Request` | `{"error": "'interval' must be an integer"}` | Wrong type (bool, float, string, null, missing). |
-| `400 Bad Request` | `{"error": "'interval' must be one minute or more"}` | Value < 1. |
+| `400 Bad Request` | `{"error": "'interval' must be one second or more"}` | Value < 1. |
 | `404 Not Found` | `{"error": "not found"}` | The recorder was not started with interval support wired in. |
 | `415 Unsupported Media Type` | `{"error": "Content-Type must be application/json"}` | Wrong / missing `Content-Type`. |
 | `500 Internal Server Error` | `{"error": "could not write interval: <reason>"}` | Unexpected error writing the shared value. |
@@ -377,10 +379,10 @@ The API uses these status codes:
 ## Lifecycle notes
 
 **Startup.** The recorder reads `settings.json` from the current
-working directory on startup and seeds the manager with any users found
-there. Users added via `POST /add` are appended to this file; users
-removed via `POST /remove` are dropped from it. Deleting the file resets
-the managed user set on the next start.
+working directory on startup and restores the automatic interval and any
+managed users found there. Users added via `POST /add` are appended to this
+file; users removed via `POST /remove` are dropped from it. Deleting the file
+resets the managed user set and interval on the next start.
 
 **Persistence of cookies updates.** As noted under `POST /cookies`,
 updating `sessionid_ss` does **not** propagate to currently-running
@@ -428,10 +430,10 @@ curl -s http://127.0.0.1:8723/cookies
 curl -s -X POST -H 'Content-Type: application/json' \
      -d '{"sessionid_ss":"new-id"}' http://127.0.0.1:8723/cookies
 
-# Read the current recheck interval (minutes)
+# Read the current recheck interval (seconds)
 curl -s http://127.0.0.1:8723/interval
 
-# Change the recheck interval to 10 minutes
+# Change the recheck interval to 120 seconds
 curl -s -X POST -H 'Content-Type: application/json' \
-     -d '{"interval":10}' http://127.0.0.1:8723/interval
+     -d '{"interval":120}' http://127.0.0.1:8723/interval
 ```

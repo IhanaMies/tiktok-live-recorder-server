@@ -24,8 +24,8 @@ class UserStore:
     Owns the set of monitored users, their recorder processes, and the shared
     status dictionary that recorders publish into.
 
-    Persistence file (`path`) stores the username list as JSON so it survives
-    restarts. Status is in-memory only.
+    Persistence file (`path`) stores the username list and automatic interval
+    as JSON so they survive restarts. Status is in-memory only.
     """
 
     def __init__(
@@ -35,6 +35,8 @@ class UserStore:
         spawn_fn: SpawnFn,
         status_dict: dict | None = None,
         watchdog_interval: float = 1.0,
+        automatic_interval: int = 60,
+        interval_setter: Callable[[int], None] | None = None,
     ):
         self._path = Path(path)
         self._manager = manager
@@ -45,6 +47,8 @@ class UserStore:
         self._watchdog_interval = watchdog_interval
         self._stop_event = threading.Event()
         self._watchdog_thread: threading.Thread | None = None
+        self._automatic_interval = automatic_interval
+        self._interval_setter = interval_setter
 
     @property
     def status(self) -> dict:
@@ -54,6 +58,20 @@ class UserStore:
     def persistence_path(self) -> Path:
         return self._path
 
+    @property
+    def automatic_interval(self) -> int:
+        return self._automatic_interval
+
+    def _set_automatic_interval(self, value: int) -> None:
+        if self._interval_setter is not None:
+            self._interval_setter(value)
+        self._automatic_interval = value
+
+    def set_automatic_interval(self, value: int) -> None:
+        with self._lock:
+            self._set_automatic_interval(value)
+            self._persist()
+
     def _load_persisted(self) -> list[str]:
         if not self._path.exists():
             return []
@@ -62,10 +80,20 @@ class UserStore:
                 data = json.load(f)
             users = data.get("users", [])
             if not isinstance(users, list):
-                logger.warning(
-                    f"Ignoring {self._path}: 'users' is not a list."
-                )
-                return []
+                logger.warning(f"Ignoring {self._path}: 'users' is not a list.")
+                users = []
+            interval = data.get("automatic_interval")
+            if interval is not None:
+                if (
+                    isinstance(interval, bool)
+                    or not isinstance(interval, int)
+                    or interval < 1
+                ):
+                    logger.warning(
+                        f"Ignoring invalid 'automatic_interval' in {self._path}."
+                    )
+                else:
+                    self._set_automatic_interval(interval)
             return [str(u).lstrip("@").strip() for u in users if str(u).strip()]
         except (OSError, json.JSONDecodeError) as ex:
             logger.warning(
@@ -78,7 +106,13 @@ class UserStore:
         tmp = self._path.with_suffix(self._path.suffix + ".tmp")
         try:
             with tmp.open("w", encoding="utf-8") as f:
-                json.dump({"users": users}, f)
+                json.dump(
+                    {
+                        "users": users,
+                        "automatic_interval": self._automatic_interval,
+                    },
+                    f,
+                )
             tmp.replace(self._path)
         except OSError as ex:
             logger.warning(f"Could not persist {self._path}: {ex}")

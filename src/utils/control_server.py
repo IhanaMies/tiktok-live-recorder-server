@@ -63,9 +63,7 @@ class ControlServer:
             daemon=True,
         )
         self._thread.start()
-        logger.info(
-            f"Control API listening on http://{self._host}:{self._actual_port}"
-        )
+        logger.info(f"Control API listening on http://{self._host}:{self._actual_port}")
         return True
 
     def stop(self, timeout: float = 5.0) -> None:
@@ -122,15 +120,11 @@ def _make_handler(
 
         def do_GET(self):  # noqa: N802
             if self.path == "/list":
-                self._write_json(
-                    HTTPStatus.OK, {"users": store.snapshot()}
-                )
+                self._write_json(HTTPStatus.OK, {"users": store.snapshot()})
                 return
             if self.path == "/interval":
                 if interval_getter is None:
-                    self._write_json(
-                        HTTPStatus.NOT_FOUND, {"error": "not found"}
-                    )
+                    self._write_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
                     return
                 try:
                     value = interval_getter()
@@ -144,9 +138,7 @@ def _make_handler(
                 return
             if self.path == "/cookies":
                 if cookies_reader is None:
-                    self._write_json(
-                        HTTPStatus.NOT_FOUND, {"error": "not found"}
-                    )
+                    self._write_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
                     return
                 try:
                     data = cookies_reader()
@@ -158,9 +150,7 @@ def _make_handler(
                     return
                 self._write_json(HTTPStatus.OK, data)
                 return
-            self._write_json(
-                HTTPStatus.NOT_FOUND, {"error": "not found"}
-            )
+            self._write_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
         def do_POST(self):  # noqa: N802
             ctype = self.headers.get("Content-Type", "")
@@ -177,9 +167,7 @@ def _make_handler(
 
             if self.path == "/interval":
                 if interval_setter is None:
-                    self._write_json(
-                        HTTPStatus.NOT_FOUND, {"error": "not found"}
-                    )
+                    self._write_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
                     return
                 raw = data.get("interval")
                 if isinstance(raw, bool) or not isinstance(raw, int):
@@ -191,7 +179,7 @@ def _make_handler(
                 if raw < 1:
                     self._write_json(
                         HTTPStatus.BAD_REQUEST,
-                        {"error": "'interval' must be one minute or more"},
+                        {"error": "'interval' must be one second or more"},
                     )
                     return
                 try:
@@ -208,9 +196,7 @@ def _make_handler(
 
             if self.path == "/cookies":
                 if cookies_writer is None:
-                    self._write_json(
-                        HTTPStatus.NOT_FOUND, {"error": "not found"}
-                    )
+                    self._write_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
                     return
                 value = data.get("sessionid_ss")
                 if not isinstance(value, str) or not value.strip():
@@ -220,9 +206,7 @@ def _make_handler(
                     )
                     return
                 try:
-                    current = (
-                        cookies_reader() if cookies_reader is not None else {}
-                    )
+                    current = cookies_reader() if cookies_reader is not None else {}
                 except OSError as ex:
                     self._write_json(
                         HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -230,7 +214,7 @@ def _make_handler(
                     )
                     return
                 current["sessionid_ss"] = value
-                print(f"HTTP: Cookie set")
+                print("HTTP: Cookie set")
                 try:
                     cookies_writer(current)
                 except OSError as ex:
@@ -255,32 +239,24 @@ def _make_handler(
             if self.path == "/add":
                 ok, message = store.add(user)
                 if not ok and "already" in message:
-                    self._write_json(
-                        HTTPStatus.CONFLICT, {"error": message}
-                    )
+                    self._write_json(HTTPStatus.CONFLICT, {"error": message})
                     return
                 if not ok:
-                    self._write_json(
-                        HTTPStatus.BAD_REQUEST, {"error": message}
-                    )
+                    self._write_json(HTTPStatus.BAD_REQUEST, {"error": message})
                     return
-                
+
                 print(f"HTTP: Add user {user}")
                 self._write_json(HTTPStatus.OK, {"ok": True, "user": message})
                 return
             if self.path == "/remove":
                 ok, message = store.remove(user)
                 if not ok and "not being recorded" in message:
-                    self._write_json(
-                        HTTPStatus.NOT_FOUND, {"error": message}
-                    )
+                    self._write_json(HTTPStatus.NOT_FOUND, {"error": message})
                     return
                 if not ok:
-                    self._write_json(
-                        HTTPStatus.BAD_REQUEST, {"error": message}
-                    )
+                    self._write_json(HTTPStatus.BAD_REQUEST, {"error": message})
                     return
-                
+
                 print(f"HTTP: Remove user {user}")
                 self._write_json(HTTPStatus.OK, {"ok": True, "user": message})
                 return

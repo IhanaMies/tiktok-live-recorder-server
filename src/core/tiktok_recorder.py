@@ -115,19 +115,21 @@ class TikTokRecorder:
 
             except (UserLiveError, LiveNotFound):
                 self._publish_status("waiting")
-                self._interruptible_sleep(self._current_interval() * TimeOut.ONE_MINUTE)
+                self._interruptible_sleep(self._current_interval())
 
             except (ConnectionError, RequestException, HTTPException):
                 logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
                 self._publish_status("error", str(Error.CONNECTION_CLOSED_AUTOMATIC))
-                self._interruptible_sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+                self._interruptible_sleep(
+                    TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE
+                )
 
             except Exception as ex:
-                logger.error(
-                    f"Unexpected error in automatic loop: {ex}", exc_info=True
-                )
+                logger.error(f"Unexpected error in automatic loop: {ex}", exc_info=True)
                 self._publish_status("error", str(ex))
-                self._interruptible_sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+                self._interruptible_sleep(
+                    TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE
+                )
 
     def _publish_status(self, status, message=""):
         if self._status_dict is None or self._status_key is None:
@@ -161,7 +163,7 @@ class TikTokRecorder:
             remaining -= 1
 
     def _current_interval(self) -> int:
-        """Return the active recheck interval (minutes).
+        """Return the active recheck interval (seconds).
 
         If a shared interval holder was provided, read it fresh on every
         call so runtime changes take effect on the next cycle without
@@ -215,18 +217,16 @@ class TikTokRecorder:
                         )
                         continue
 
+                interval = self._current_interval()
                 print()
-                logger.info(
-                    f"Waiting {self.automatic_interval} minutes for the next check..."
-                )
-                time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
+                logger.info(f"Waiting {interval} seconds for the next check...")
+                time.sleep(interval)
 
             except (UserLiveError, LiveNotFound) as ex:
                 logger.info(ex)
-                logger.info(
-                    f"Waiting {self.automatic_interval} minutes before recheck\n"
-                )
-                time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
+                interval = self._current_interval()
+                logger.info(f"Waiting {interval} seconds before recheck\n")
+                time.sleep(interval)
 
             except (ConnectionError, RequestException, HTTPException):
                 logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)

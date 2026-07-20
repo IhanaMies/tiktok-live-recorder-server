@@ -90,10 +90,10 @@ def _run_manager_flow(args, mode, cookies, initial_users):
         store = UserStore(
             path=PERSISTENCE_FILE,
             manager=manager,
-            spawn_fn=_spawn_factory(
-                args, mode, cookies, status_dict, interval_value
-            ),
+            spawn_fn=_spawn_factory(args, mode, cookies, status_dict, interval_value),
             status_dict=status_dict,
+            automatic_interval=args.automatic_interval,
+            interval_setter=lambda v: setattr(interval_value, "value", int(v)),
         )
         store.seed(initial_users)
 
@@ -105,8 +105,8 @@ def _run_manager_flow(args, mode, cookies, initial_users):
             port=CONTROL_PORT,
             cookies_reader=read_cookies,
             cookies_writer=write_cookies,
-            interval_getter=lambda: int(interval_value.value),
-            interval_setter=lambda v: setattr(interval_value, "value", int(v)),
+            interval_getter=lambda: store.automatic_interval,
+            interval_setter=store.set_automatic_interval,
         )
         server.start()
 
@@ -200,9 +200,7 @@ def cmd_list(host=CONTROL_HOST, port=CONTROL_PORT, timeout=2.0):
     for entry in users:
         since = float(entry.get("since", 0.0))
         since_str = (
-            datetime.fromtimestamp(since, tz=timezone.utc).isoformat(
-                timespec="seconds"
-            )
+            datetime.fromtimestamp(since, tz=timezone.utc).isoformat(timespec="seconds")
             if since
             else "-"
         )

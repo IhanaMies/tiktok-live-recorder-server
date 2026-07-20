@@ -38,13 +38,15 @@ def spawn_factory():
     return spawn
 
 
-def make_store(tmp_path):
+def make_store(tmp_path, automatic_interval=60, interval_setter=None):
     manager = multiprocessing.Manager()
     store = UserStore(
         path=tmp_path / "users.json",
         manager=manager,
         spawn_fn=spawn_factory(),
         status_dict=manager.dict(),
+        automatic_interval=automatic_interval,
+        interval_setter=interval_setter,
     )
     return store, manager
 
@@ -176,7 +178,9 @@ def test_non_json_content_type_returns_415(tmp_path):
         assert server.start() is True
         url = f"http://127.0.0.1:{server.port}/add"
         req = urllib.request.Request(
-            url, data=b"user=alice", method="POST",
+            url,
+            data=b"user=alice",
+            method="POST",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         try:
@@ -194,8 +198,11 @@ def test_get_cookies_returns_current(tmp_path):
         {"sessionid_ss": "abc", "tt-target-idc": "eu"}
     )
     server = ControlServer(
-        store, host="127.0.0.1", port=0,
-        cookies_reader=reader, cookies_writer=writer,
+        store,
+        host="127.0.0.1",
+        port=0,
+        cookies_reader=reader,
+        cookies_writer=writer,
     )
     try:
         assert server.start() is True
@@ -213,8 +220,11 @@ def test_post_cookies_updates_sessionid_ss(tmp_path):
         {"sessionid_ss": "old", "tt-target-idc": "eu"}
     )
     server = ControlServer(
-        store, host="127.0.0.1", port=0,
-        cookies_reader=reader, cookies_writer=writer,
+        store,
+        host="127.0.0.1",
+        port=0,
+        cookies_reader=reader,
+        cookies_writer=writer,
     )
     try:
         assert server.start() is True
@@ -243,8 +253,11 @@ def test_post_cookies_missing_field_returns_400(tmp_path):
     store, manager = make_store(tmp_path)
     reader, writer, _ = make_cookies_io()
     server = ControlServer(
-        store, host="127.0.0.1", port=0,
-        cookies_reader=reader, cookies_writer=writer,
+        store,
+        host="127.0.0.1",
+        port=0,
+        cookies_reader=reader,
+        cookies_writer=writer,
     )
     try:
         assert server.start() is True
@@ -270,7 +283,7 @@ def test_cookies_endpoint_absent_when_reader_not_provided(tmp_path):
         manager.shutdown()
 
 
-def make_interval_io(initial=5):
+def make_interval_io(initial=60):
     """Return (getter, setter, backing_list) for the interval endpoint."""
     backing = [int(initial)]
     return (lambda: backing[0], lambda v: backing.__setitem__(0, int(v)), backing)
@@ -280,8 +293,11 @@ def test_get_interval_returns_current(tmp_path):
     store, manager = make_store(tmp_path)
     getter, setter, _ = make_interval_io(7)
     server = ControlServer(
-        store, host="127.0.0.1", port=0,
-        interval_getter=getter, interval_setter=setter,
+        store,
+        host="127.0.0.1",
+        port=0,
+        interval_getter=getter,
+        interval_setter=setter,
     )
     try:
         assert server.start() is True
@@ -293,26 +309,32 @@ def test_get_interval_returns_current(tmp_path):
         manager.shutdown()
 
 
-def test_post_interval_updates_value(tmp_path):
-    store, manager = make_store(tmp_path)
-    getter, setter, backing = make_interval_io(5)
+def test_post_interval_updates_value_and_settings(tmp_path):
+    _, setter, backing = make_interval_io(60)
+    store, manager = make_store(tmp_path, automatic_interval=60, interval_setter=setter)
+    store.seed([])
     server = ControlServer(
-        store, host="127.0.0.1", port=0,
-        interval_getter=getter, interval_setter=setter,
+        store,
+        host="127.0.0.1",
+        port=0,
+        interval_getter=lambda: store.automatic_interval,
+        interval_setter=store.set_automatic_interval,
     )
     try:
         assert server.start() is True
         base = f"http://127.0.0.1:{server.port}"
-        status, body = http_request(
-            f"{base}/interval", "POST", {"interval": 10}
-        )
+        status, body = http_request(f"{base}/interval", "POST", {"interval": 120})
         assert status == 200
-        assert body == {"ok": True, "interval": 10}
-        assert backing[0] == 10
+        assert body == {"ok": True, "interval": 120}
+        assert backing[0] == 120
+        assert json.loads(store.persistence_path.read_text()) == {
+            "users": [],
+            "automatic_interval": 120,
+        }
 
         status, body = http_request(f"{base}/interval")
         assert status == 200
-        assert body["interval"] == 10
+        assert body["interval"] == 120
     finally:
         server.stop()
         manager.shutdown()
@@ -322,18 +344,19 @@ def test_post_interval_rejects_zero_and_negative(tmp_path):
     store, manager = make_store(tmp_path)
     getter, setter, _ = make_interval_io(5)
     server = ControlServer(
-        store, host="127.0.0.1", port=0,
-        interval_getter=getter, interval_setter=setter,
+        store,
+        host="127.0.0.1",
+        port=0,
+        interval_getter=getter,
+        interval_setter=setter,
     )
     try:
         assert server.start() is True
         base = f"http://127.0.0.1:{server.port}"
         for value in (0, -1):
-            status, body = http_request(
-                f"{base}/interval", "POST", {"interval": value}
-            )
+            status, body = http_request(f"{base}/interval", "POST", {"interval": value})
             assert status == 400
-            assert "one minute or more" in body["error"]
+            assert "one second or more" in body["error"]
     finally:
         server.stop()
         manager.shutdown()
@@ -343,16 +366,17 @@ def test_post_interval_rejects_non_integer(tmp_path):
     store, manager = make_store(tmp_path)
     getter, setter, _ = make_interval_io(5)
     server = ControlServer(
-        store, host="127.0.0.1", port=0,
-        interval_getter=getter, interval_setter=setter,
+        store,
+        host="127.0.0.1",
+        port=0,
+        interval_getter=getter,
+        interval_setter=setter,
     )
     try:
         assert server.start() is True
         base = f"http://127.0.0.1:{server.port}"
         for value in ("5", 5.5, True, None):
-            status, body = http_request(
-                f"{base}/interval", "POST", {"interval": value}
-            )
+            status, body = http_request(f"{base}/interval", "POST", {"interval": value})
             assert status == 400
             assert "integer" in body["error"]
     finally:

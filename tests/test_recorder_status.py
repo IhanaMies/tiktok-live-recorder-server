@@ -95,9 +95,8 @@ def test_unexpected_exception_publishes_error():
     manager = multiprocessing.Manager()
     status = manager.dict()
     try:
-        rec = _make_recorder(
-            ["boom"], status, lambda *a, **kw: None
-        )
+        rec = _make_recorder(["boom"], status, lambda *a, **kw: None)
+
         # Trip removed as soon as we observe the error transition.
         def tripper():
             deadline = time.time() + 5
@@ -124,9 +123,7 @@ def test_offline_user_stays_waiting():
     manager = multiprocessing.Manager()
     status = manager.dict()
     try:
-        rec = _make_recorder(
-            ["offline"], status, lambda *a, **kw: None
-        )
+        rec = _make_recorder(["offline"], status, lambda *a, **kw: None)
 
         poll_started = threading.Event()
 
@@ -151,6 +148,24 @@ def test_offline_user_stays_waiting():
         final = status["alice"]
         assert final["status"] == UserState.STOPPED.value
         assert final["message"] == ""
+    finally:
+        manager.shutdown()
+
+
+def test_automatic_mode_uses_interval_as_seconds():
+    manager = multiprocessing.Manager()
+    status = manager.dict()
+    try:
+        rec = _make_recorder(["offline"], status, lambda *a, **kw: None)
+        slept = []
+
+        def fake_sleep(seconds):
+            slept.append(seconds)
+            _set_removed(status)
+
+        rec._interruptible_sleep = fake_sleep
+        rec.automatic_mode()
+        assert slept == [1]
     finally:
         manager.shutdown()
 
