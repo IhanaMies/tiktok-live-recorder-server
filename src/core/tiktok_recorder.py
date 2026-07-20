@@ -258,13 +258,12 @@ class TikTokRecorder:
                     f"(stream {index}/{len(live_urls)})"
                 )
             else:
-                logger.info(f"Started recording (stream {index}/{len(live_urls)})...")
+                logger.info(f"Started recording {user} (stream {index}/{len(live_urls)})...")
 
             buffer_size = 512 * 1024  # 512 KB buffer
             buffer = bytearray()
             bytes_written = 0
 
-            logger.info("[PRESS CTRL + C ONCE TO STOP]")
             with open(output, "wb") as out_file:
                 stop_recording = False
                 stream_ended = False
