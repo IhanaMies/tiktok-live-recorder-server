@@ -2,6 +2,7 @@ import json
 import multiprocessing
 import threading
 import time
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Callable
@@ -37,6 +38,7 @@ class UserStore:
         watchdog_interval: float = 1.0,
         automatic_interval: int = 60,
         interval_setter: Callable[[int], None] | None = None,
+        output_root: str | None = None,
     ):
         self._path = Path(path)
         self._manager = manager
@@ -49,6 +51,7 @@ class UserStore:
         self._watchdog_thread: threading.Thread | None = None
         self._automatic_interval = automatic_interval
         self._interval_setter = interval_setter
+        self._output_root = output_root
 
     @property
     def status(self) -> dict:
@@ -61,6 +64,10 @@ class UserStore:
     @property
     def automatic_interval(self) -> int:
         return self._automatic_interval
+
+    @property
+    def output_root(self) -> str | None:
+        return self._output_root
 
     def _set_automatic_interval(self, value: int) -> None:
         if self._interval_setter is not None:
@@ -94,7 +101,15 @@ class UserStore:
                     )
                 else:
                     self._set_automatic_interval(interval)
-            return [str(u).lstrip("@").strip() for u in users if str(u).strip()]
+            output = data.get("output")
+            if output is not None and self._output_root is None:
+                if not isinstance(output, str):
+                    logger.warning(
+                        f"Ignoring invalid 'output' in {self._path} (must be a string)."
+                    )
+                elif output.strip():
+                    self._output_root = output.strip()
+            return [str(u).lstrip("@").strip() for u in users if str(u).strip()]         
         except (OSError, json.JSONDecodeError) as ex:
             logger.warning(
                 f"Could not load {self._path}: {ex}. Starting with empty user set."
@@ -110,6 +125,7 @@ class UserStore:
                     {
                         "users": users,
                         "automatic_interval": self._automatic_interval,
+                        "output": self._output_root,
                     },
                     f,
                 )
@@ -151,7 +167,8 @@ class UserStore:
         """
         Mark a user as removed. The recorder will exit gracefully after its
         current recording finishes. If the recorder is currently in 'waiting'
-        state, the process is terminated immediately.
+        state, the process is terminated immediately. Persisted state is
+        updated immediately so a restart will not re-add the user.
         """
         user = self._normalize(user)
         if not user:
@@ -163,8 +180,14 @@ class UserStore:
             entry["removed"] = True
             self._status[user] = entry
             proc = self._processes[user]
+            # Forget the user immediately so persistence reflects the removal
+            # even if the underlying recorder process keeps running until its
+            # current live stream ends.
+            self._processes.pop(user, None)
+        with self._lock:
+            self._persist()
         if not proc.is_alive():
-            self._cleanup_user(user)
+            self._cleanup_status(user)
             return True, user
         entry = self._status.get(user, {})
         if entry.get("status") != UserState.LIVE.value:
@@ -173,7 +196,7 @@ class UserStore:
             if proc.is_alive():
                 proc.kill()
                 proc.join(timeout=2)
-            self._cleanup_user(user)
+            self._cleanup_status(user)
         return True, user
 
     def snapshot(self) -> list[dict]:
@@ -184,7 +207,12 @@ class UserStore:
         for user in known:
             entry = self._status.get(
                 user,
-                {"status": UserState.WAITING.value, "since": 0.0, "message": ""},
+                {
+                    "status": UserState.WAITING.value,
+                    "since": 0.0,
+                    "message": "",
+                    "last_online": None,
+                },
             )
             items.append(
                 {
@@ -192,6 +220,7 @@ class UserStore:
                     "status": entry.get("status", UserState.WAITING.value),
                     "since": float(entry.get("since", 0.0)),
                     "message": entry.get("message", ""),
+                    "last_online": _format_last_online(entry.get("last_online")),
                 }
             )
         return items
@@ -208,7 +237,11 @@ class UserStore:
             return sorted(self._processes.keys())
 
     def shutdown(self, timeout: float = 10.0) -> None:
-        """Set removed=True for all users, join processes, terminate survivors."""
+        """Set removed=True for all users, join processes, terminate survivors.
+
+        Note: cleanup does NOT persist. Exiting the program must not erase
+        the persisted user list — only explicit /remove calls do that.
+        """
         self._stop_event.set()
         with self._lock:
             users = list(self._processes.keys())
@@ -220,7 +253,7 @@ class UserStore:
         for user in users:
             proc = self._processes.get(user)
             if proc is None or not proc.is_alive():
-                self._cleanup_user(user)
+                self._cleanup_status(user)
                 continue
             remaining = max(0.0, deadline - time.time())
             proc.join(timeout=remaining)
@@ -230,7 +263,7 @@ class UserStore:
             if proc.is_alive():
                 proc.kill()
                 proc.join(timeout=2)
-            self._cleanup_user(user)
+            self._cleanup_status(user)
         if self._watchdog_thread is not None:
             self._watchdog_thread.join(timeout=2)
 
@@ -240,12 +273,24 @@ class UserStore:
             "since": time.time(),
             "message": "",
             "removed": False,
+            "last_online": None,
         }
         proc = self._spawn_fn(user, self._manager)
         proc.start()
         self._processes[user] = proc
 
     def _cleanup_user(self, user: str) -> None:
+        """Drop the process entry, update status, and persist.
+
+        Caller is responsible for ensuring persistence is desired. Prefer
+        `_cleanup_status` for shutdown/watchdog paths where the persisted
+        user list should remain intact.
+        """
+        self._cleanup_status(user)
+        self._persist()
+
+    def _cleanup_status(self, user: str) -> None:
+        """Drop the process entry and mark status STOPPED. Does NOT persist."""
         with self._lock:
             self._processes.pop(user, None)
         entry = self._status.get(user)
@@ -253,7 +298,6 @@ class UserStore:
             entry["status"] = UserState.STOPPED.value
             entry["since"] = time.time()
             self._status[user] = entry
-        self._persist()
 
     def _ensure_watchdog(self) -> None:
         if self._watchdog_thread is not None and self._watchdog_thread.is_alive():
@@ -275,7 +319,7 @@ class UserStore:
                 if entry.get("status") == UserState.STOPPED.value:
                     continue
                 if entry.get("removed"):
-                    self._cleanup_user(user)
+                    self._cleanup_status(user)
                     continue
                 exit_code = proc.exitcode
                 self._status[user] = {
@@ -285,3 +329,19 @@ class UserStore:
                     "removed": entry.get("removed", False),
                 }
             self._stop_event.wait(self._watchdog_interval)
+
+
+def _format_last_online(value) -> str | None:
+    """Render a `last_online` timestamp using the C# format string
+    `yyyy-MM-dd hh:mm.ss` (UTC).
+
+    Returns `None` if the input is falsy or non-numeric so the field
+    keeps the "never observed live yet" sentinel in API responses.
+    """
+    if value is None:
+        return None
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None
+    return datetime.fromtimestamp(seconds, tz=timezone.utc).strftime("%Y-%m-%d %I:%M.%S")

@@ -44,7 +44,9 @@ def _build_config(args, mode, cookies, user=None):
     )
 
 
-def _build_manager_config(args, mode, cookies, user, status_dict, interval_value):
+def _build_manager_config(
+    args, mode, cookies, user, status_dict, interval_value, output
+):
     from utils.recorder_config import RecorderConfig
 
     return RecorderConfig(
@@ -55,7 +57,7 @@ def _build_manager_config(args, mode, cookies, user, status_dict, interval_value
         automatic_interval=args.automatic_interval,
         cookies=cookies,
         proxy=args.proxy,
-        output=args.output,
+        output=output,
         duration=args.duration,
         use_telegram=args.telegram,
         bitrate=args.bitrate,
@@ -66,16 +68,37 @@ def _build_manager_config(args, mode, cookies, user, status_dict, interval_value
     )
 
 
-def _spawn_factory(args, mode, cookies, status_dict, interval_value):
+def _spawn_factory(args, mode, cookies, status_dict, interval_value, output):
     def spawn(user, _manager):
         config = _build_manager_config(
-            args, mode, cookies, user, status_dict, interval_value
+            args, mode, cookies, user, status_dict, interval_value, output
         )
         return multiprocessing.Process(
             target=record_user, args=(config,), name=f"recorder-{user}"
         )
 
     return spawn
+
+
+def _load_persisted_output(path):
+    """Read the persisted `output` root from settings.json, if any."""
+    from pathlib import Path
+
+    p = Path(path)
+    if not p.exists():
+        return None
+    try:
+        import json
+
+        with p.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    value = data.get("output")
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    return None
 
 
 def _run_manager_flow(args, mode, cookies, initial_users):
@@ -87,13 +110,18 @@ def _run_manager_flow(args, mode, cookies, initial_users):
     try:
         status_dict = manager.dict()
         interval_value = manager.Value("i", args.automatic_interval)
+        # CLI -output wins, otherwise fall back to the persisted setting.
+        effective_output = args.output or _load_persisted_output(PERSISTENCE_FILE)
         store = UserStore(
             path=PERSISTENCE_FILE,
             manager=manager,
-            spawn_fn=_spawn_factory(args, mode, cookies, status_dict, interval_value),
+            spawn_fn=_spawn_factory(
+                args, mode, cookies, status_dict, interval_value, effective_output
+            ),
             status_dict=status_dict,
             automatic_interval=args.automatic_interval,
             interval_setter=lambda v: setattr(interval_value, "value", int(v)),
+            output_root=effective_output,
         )
         store.seed(initial_users)
 

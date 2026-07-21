@@ -210,12 +210,17 @@ class TikTokAPI:
             return self._old_get_room_id_from_user(user)
 
         response = self.http_client.get(signed_url)
+
+        if not response:
+            raise UserLiveError(f"TikTok API returned an empty response for user '{user}'.")
+        
         content = response.text
 
         if not content or "Please wait" in content:
             raise UserLiveError(TikTokError.WAF_BLOCKED)
-
+        
         data = response.json()
+
         return (data.get("data") or {}).get("user", {}).get("roomId")
 
     def get_followers_list(self, sec_uid) -> list:

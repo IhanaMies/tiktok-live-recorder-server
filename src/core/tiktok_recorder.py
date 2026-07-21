@@ -99,6 +99,7 @@ class TikTokRecorder:
         if not self.tiktok.is_room_alive(self.room_id):
             raise UserLiveError(f"@{self.user}: {TikTokError.USER_NOT_CURRENTLY_LIVE}")
 
+        self._stamp_last_online()
         self.start_recording(self.user, self.room_id)
 
     def automatic_mode(self):
@@ -117,7 +118,24 @@ class TikTokRecorder:
                 self._publish_status("waiting")
                 self._interruptible_sleep(self._current_interval())
 
-            except (ConnectionError, RequestException, HTTPException):
+            except (ConnectionError):
+                logger.error(f"Connection error while checking @{self.user}")
+                logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
+                self._publish_status("error", str(Error.CONNECTION_CLOSED_AUTOMATIC))
+                self._interruptible_sleep(
+                    TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE
+                )
+
+            except (RequestException):
+                logger.error(f"Request error while checking @{self.user}")
+                logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
+                self._publish_status("error", str(Error.CONNECTION_CLOSED_AUTOMATIC))
+                self._interruptible_sleep(
+                    TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE
+                )
+
+            except (HTTPException):
+                logger.error(f"HTTP error while checking @{self.user}")
                 logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
                 self._publish_status("error", str(Error.CONNECTION_CLOSED_AUTOMATIC))
                 self._interruptible_sleep(
@@ -125,7 +143,7 @@ class TikTokRecorder:
                 )
 
             except Exception as ex:
-                logger.error(f"Unexpected error in automatic loop: {ex}", exc_info=True)
+                logger.error(f"Unexpected error in automatic loop (@{self.user}): {ex}", exc_info=True)
                 self._publish_status("error", str(ex))
                 self._interruptible_sleep(
                     TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE
@@ -144,7 +162,20 @@ class TikTokRecorder:
             "since": time.time(),
             "message": message,
             "removed": previous.get("removed", False),
+            "last_online": previous.get("last_online"),
         }
+
+    def _stamp_last_online(self) -> None:
+        """Record that the user was observed live right now.
+
+        Only called after the live-room check succeeds, so it represents
+        a real observation, not an intent to record.
+        """
+        if self._status_dict is None or self._status_key is None:
+            return
+        entry = self._status_dict.get(self._status_key, {})
+        entry["last_online"] = time.time()
+        self._status_dict[self._status_key] = entry
 
     def _is_removed(self):
         if self._status_dict is None or self._status_key is None:

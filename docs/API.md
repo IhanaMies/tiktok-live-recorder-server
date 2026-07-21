@@ -44,12 +44,11 @@ rejected.
 
 ### Timestamps
 
-Timestamps in responses (`since`) are POSIX seconds with a fractional
-component (float, UTC epoch). Convert with:
-
-```js
-new Date(entry.since * 1000).toISOString();
-```
+- `since` — POSIX seconds with a fractional component (float, UTC epoch).
+  Convert with `new Date(entry.since * 1000).toISOString()`.
+- `last_online` — formatted string, UTC, using the C# format
+  `yyyy-MM-dd hh:mm.ss` (e.g. `"2026-07-20 06:53.25"`). `null` until the
+  user is observed live for the first time.
 
 ### Polling
 
@@ -78,13 +77,15 @@ Return the current set of monitored users and each one's recording status.
       "user": "alice",
       "status": "waiting",
       "since": 1734567890.123,
-      "message": ""
+      "message": "",
+      "last_online": "2024-12-19 06:44.40"
     },
     {
       "user": "bob",
       "status": "live",
       "since": 1734567891.456,
-      "message": ""
+      "message": "",
+      "last_online": "2024-12-19 06:45.56"
     }
   ]
 }
@@ -344,6 +345,7 @@ Each element of the `users` array in `/list` has the following fields:
 | `status` | string | One of `waiting`, `live`, `error`, `stopped`. |
 | `since` | float | POSIX timestamp (seconds, UTC) of the last status transition for this user. Use this to detect changes between polls. |
 | `message` | string | Free-form text. Set on `error` to the exception message; on `stopped` carries over the last `message` (e.g. the last error before exit). Empty otherwise. |
+| `last_online` | string \| null | UTC timestamp of the most recent observation of this user being live, formatted as the C# string `yyyy-MM-dd hh:mm.ss` (e.g. `"2026-07-20 06:53.25"`). `null` until the user is observed live for the first time. Survives status transitions and `waiting → live → waiting` cycles — it is monotonically non-decreasing across the lifetime of this recorder process. |
 
 ---
 
